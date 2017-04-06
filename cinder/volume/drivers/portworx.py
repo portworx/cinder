@@ -11,7 +11,7 @@
 #    under the License.
 
 """
-Driver for Linux servers running LVM.
+Driver for Linux servers running Portworx.
 
 """
 
@@ -29,7 +29,6 @@ from oslo_utils import importutils
 from oslo_utils import units
 import six
 
-from cinder.brick.local_dev import lvm as lvm
 from cinder import exception
 from cinder.i18n import _
 from cinder.image import image_utils
@@ -41,41 +40,7 @@ from cinder.volume import utils as volutils
 
 LOG = logging.getLogger(__name__)
 
-# FIXME(jdg):  We'll put the lvm_ prefix back on these when we
-# move over to using this as the real LVM driver, for now we'll
-# rename them so that the config generation utility doesn't barf
-# on duplicate entries.
 volume_opts = [
-    cfg.StrOpt('volume_group',
-               default='cinder-volumes',
-               help='Name for the VG that will contain exported volumes'),
-    cfg.IntOpt('lvm_mirrors',
-               default=0,
-               help='If >0, create LVs with multiple mirrors. Note that '
-                    'this requires lvm_mirrors + 2 PVs with available space'),
-    cfg.StrOpt('lvm_type',
-               default='default',
-               choices=['default', 'thin', 'auto'],
-               help='Type of LVM volumes to deploy; (default, thin, or auto). '
-                    'Auto defaults to thin if thin is supported.'),
-    cfg.StrOpt('lvm_conf_file',
-               default='/etc/cinder/lvm.conf',
-               help='LVM conf file to use for the LVM driver in Cinder; '
-                    'this setting is ignored if the specified file does '
-                    'not exist (You can also specify \'None\' to not use '
-                    'a conf file even if one exists).'),
-    cfg.FloatOpt('lvm_max_over_subscription_ratio',
-                 # This option exists to provide a default value for the
-                 # LVM driver which is different than the global default.
-                 default=1.0,
-                 help='max_over_subscription_ratio setting for the LVM '
-                      'driver.  If set, this takes precedence over the '
-                      'general max_over_subscription_ratio option.  If '
-                      'None, the general option is used.'),
-    cfg.BoolOpt('lvm_suppress_fd_warnings',
-                default=False,
-                help='Suppress leaked file descriptor warnings in LVM '
-                     'commands.')
 ]
 
 CONF = cfg.CONF
@@ -94,7 +59,6 @@ class PortworxVolumeDriver(driver.VolumeDriver):
     def __init__(self, vg_obj=None, *args, **kwargs):
         # Parent sets db, host, _execute and base config
         super(PortworxVolumeDriver, self).__init__(*args, **kwargs)
-
         self.hostname = socket.gethostname()
         self.backend_name = "portworx"
 
@@ -116,71 +80,6 @@ class PortworxVolumeDriver(driver.VolumeDriver):
 
     def attach_volume(self, context, volume, instance_uuid, host_name, mountpoint):
         return
-
-    def _sizestr(self, size_in_g):
-        return '%sg' % size_in_g
-
-    def _volume_not_present(self, volume_name):
-        return self.vg.get_volume(volume_name) is None
-
-    def _clear_volume(self, volume, is_snapshot=False):
-        # zero out old volumes to prevent data leaking between users
-        # TODO(ja): reclaiming space should be done lazy and low priority
-        if is_snapshot:
-            # if the volume to be cleared is a snapshot of another volume
-            # we need to clear out the volume using the -cow instead of the
-            # directly volume path.  We need to skip this if we are using
-            # thin provisioned LVs.
-            # bug# lp1191812
-            dev_path = self.local_path(volume) + "-cow"
-        else:
-            dev_path = self.local_path(volume)
-
-        # TODO(jdg): Maybe we could optimize this for snaps by looking at
-        # the cow table and only overwriting what's necessary?
-        # for now we're still skipping on snaps due to hang issue
-        if not os.path.exists(dev_path):
-            msg = (_('Volume device file path %s does not exist.')
-                   % dev_path)
-            LOG.error(msg)
-            raise exception.VolumeBackendAPIException(data=msg)
-
-        size_in_g = (volume.get('volume_size') if is_snapshot
-                     else volume.get('size'))
-        if size_in_g is None:
-            msg = (_("Size for volume: %s not found, cannot secure delete.")
-                   % volume['id'])
-            LOG.error(msg)
-            raise exception.InvalidParameterValue(msg)
-
-        # clear_volume expects sizes in MiB, we store integer GiB
-        # be sure to convert before passing in
-        vol_sz_in_meg = size_in_g * units.Ki
-
-        volutils.clear_volume(
-            vol_sz_in_meg, dev_path,
-            volume_clear=self.configuration.volume_clear,
-            volume_clear_size=self.configuration.volume_clear_size)
-
-    def _escape_snapshot(self, snapshot_name):
-        # Linux LVM reserves name that starts with snapshot, so that
-        # such volume name can't be created. Mangle it.
-        if not snapshot_name.startswith('snapshot'):
-            return snapshot_name
-        return '_' + snapshot_name
-
-    def _unescape_snapshot(self, snapshot_name):
-        # Undo snapshot name change done by _escape_snapshot()
-        if not snapshot_name.startswith('_snapshot'):
-            return snapshot_name
-        return snapshot_name[1:]
-
-    def _create_volume(self, name, size, lvm_type, mirror_count, vg=None):
-        vg_ref = self.vg
-        if vg is not None:
-            vg_ref = vg
-
-        vg_ref.create_volume(name, size, lvm_type, mirror_count)
 
     def _update_volume_stats(self):
         """Retrieve stats info from volume group."""
@@ -315,12 +214,6 @@ class PortworxVolumeDriver(driver.VolumeDriver):
         return 0
 
     def manage_existing_snapshot(self, snapshot, existing_ref):
-        return 0
-
-    def _get_manageable_resource_info(self, cinder_resources, resource_type,
-                                      marker, limit, offset, sort_keys,
-                                      sort_dirs):
-
         return 0
 
     def get_manageable_volumes(self, cinder_volumes, marker, limit, offset,

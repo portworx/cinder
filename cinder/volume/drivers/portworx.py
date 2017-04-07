@@ -79,6 +79,38 @@ class PortworxVolumeDriver(driver.VolumeDriver):
         return
 
     def attach_volume(self, context, volume, instance_uuid, host_name, mountpoint):
+        """Attaches a volume. If a mountpoint is passed in, perform a mount as well."""
+        LOG.debug('TRYING to attach volume : %s', volume['id'])
+        str = "sudo /opt/pwx/bin/pxctl host attach %s" % (volume['id'])
+        LOG.debug('TRYING to execute : %s',str)
+        try:
+            retcode = subprocess.call(str, shell=True)
+            if retcode < 0:
+                  print >>sys.stderr, "Child was terminated by signal", -retcode
+            else:
+                  print >>sys.stderr, "Child returned", retcode
+        except OSError as e:
+                  print >>sys.stderr, "Exception in attaching vol", retcode
+        LOG.info('Successfully attached volume: %s', volume['id'])
+        if mount_point is None:
+            return
+        else:
+            self.mount_volume(self, context, volume, instance_uuid, host_name, mountpoint)
+
+    def mount_volume(self, context, volume, instance_uuid, host_name, mountpoint):
+        """Mount a drive to the volume."""
+        LOG.debug('TRYING to mount a drive to volume : %s', volume['id'])
+        str = "sudo /opt/pwx/bin/pxctl host mount %s %s" % (volume['id'], mountpoint)
+        LOG.debug('TRYING to execute : %s',str)
+        try:
+            retcode = subprocess.call(str, shell=True)
+            if retcode < 0:
+                  print >>sys.stderr, "Child was terminated by signal", -retcode
+            else:
+                  print >>sys.stderr, "Child returned", retcode
+        except OSError as e:
+                  print >>sys.stderr, "Exception in mounting vol", retcode
+        LOG.info('Successfully mounted volume: %s', volume['id'])
         return
 
     def _update_volume_stats(self):
@@ -110,8 +142,9 @@ class PortworxVolumeDriver(driver.VolumeDriver):
             else:
                   print >>sys.stderr, "Child returned", retcode
         except OSError as e:
-                  print >>sys.stderr, "Exception in create", retcode
+                  print >>sys.stderr, "Exception in create vol", retcode
         LOG.info('Successfully created volume: %s', volume['id'])
+        return
 
     def update_migrated_volume(self, ctxt, volume, new_volume,
                                original_volume_status):
@@ -122,7 +155,20 @@ class PortworxVolumeDriver(driver.VolumeDriver):
         return
 
     def detach_volume(self, context, volume, attachment=None):
-       return
+        """Detaches a volume."""
+        LOG.debug('TRYING to detach volume : %s', volume['id'])
+        str = "sudo /opt/pwx/bin/pxctl host detach -a %s" % (volume['id'])
+        LOG.debug('TRYING to execute : %s',str)
+        try:
+            retcode = subprocess.call(str, shell=True)
+            if retcode < 0:
+                  print >>sys.stderr, "Child was terminated by signal", -retcode
+            else:
+                  print >>sys.stderr, "Child returned", retcode
+        except OSError as e:
+                  print >>sys.stderr, "Exception in detaching vol", retcode
+        LOG.info('Successfully detached volume: %s', volume['id'])
+        return
 
     def delete_volume(self, volume):
         """Deletes a logical volume."""
@@ -136,16 +182,44 @@ class PortworxVolumeDriver(driver.VolumeDriver):
             else:
                   print >>sys.stderr, "Child returned", retcode
         except OSError as e:
-                  print >>sys.stderr, "Exception in create", retcode
+                  print >>sys.stderr, "Exception in delete vol", retcode
         LOG.info('Successfully deleted  volume: %s', volume['id'])
         return True
 
     def create_snapshot(self, snapshot):
         """Creates a snapshot."""
+        volume_name = snapshot['volume_name']
+        snap_name = snapshot['name']
+        LOG.debug('TRYING to create snapshot for volume : %s', volume_name)
+        str = "sudo /opt/pwx/bin/pxctl snap create --name %s %s" % (snap_name, volume_name)
+        LOG.debug('TRYING to execute create snap: %s',str)
+        try:
+            retcode = subprocess.call(str, shell=True)
+            if retcode < 0:
+                  print >>sys.stderr, "Child was terminated by signal", -retcode
+            else:
+                  print >>sys.stderr, "Child returned", retcode
+        except OSError as e:
+                  print >>sys.stderr, "Exception in create snap", retcode
+        LOG.info('Successfully created snapshot: %s', snap_name)
+        return True
 
     def delete_snapshot(self, snapshot):
+        snap_name = snapshot['name']
+        LOG.debug('TRYING to delete snapshot : %s', snap_name)
+        str = "sudo /opt/pwx/bin/pxctl snap delete %s" % (snap_name)
+        LOG.debug('TRYING to execute delete snap: %s',str)
+        try:
+            retcode = subprocess.call(str, shell=True)
+            if retcode < 0:
+                  print >>sys.stderr, "Child was terminated by signal", -retcode
+            else:
+                  print >>sys.stderr, "Child returned", retcode
+        except OSError as e:
+                  print >>sys.stderr, "Exception in delete snap", retcode
+
         """Deletes a snapshot."""
-        LOG.info('Successfully deleted snapshot: %s', snapshot['id'])
+        LOG.info('Successfully deleted snapshot: %s', snap_name)
         return True
 
 
